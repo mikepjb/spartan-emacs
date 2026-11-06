@@ -3,3 +3,4 @@ eln-cache/
 elpa/
 ielm-history.eld
 *~
+vendor/
