@@ -1,6 +1,29 @@
 ;;; init.el -*- lexical-binding: t; -*-
 (require 'seq) ;; required for repl-mode
 
+;; TODO vc mode setup > magit
+;; review how emacs-solo works to use stuff like shown in the screenshots (docker?)
+
+;;; Code:
+
+(require 'outline)
+
+(setq outline-minor-mode-cycle t)
+
+(defun mx/elisp-outline-setup ()
+  ;; Use only comment headings, regardless of the major mode's
+  ;; outline search implementation.
+  (setq-local outline-search-function nil)
+  (setq-local outline-regexp ";;;+ ")
+  (setq-local outline-level #'lisp-outline-level)
+  (setq-local outline-default-state 1) ; Show top-level headings only
+  (outline-minor-mode 1))
+
+(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
+
+(define-key outline-minor-mode-map (kbd "<backtab>")
+            #'outline-cycle-buffer)
+
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
@@ -15,6 +38,7 @@
 (set-face-attribute 'default nil :font "Rec Mono Linear" :height 140)
 
 (setq
+ read-process-output-max (* 4 1024 1024)
  inhibit-startup-screen t
  ns-use-native-fullscreen nil
  ring-bell-function 'ignore
@@ -43,6 +67,10 @@
  compilation-scroll-output t
  js-indent-level 2
  sql-input-ring-file-name (expand-file-name "sql-history" user-emacs-directory))
+
+(setq custom-file (locate-user-emacs-file "custom.el"))
+(load custom-file 'noerror 'nomessage)
+(load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
 
 (setq-default
  display-fill-column-indicator-column 80
@@ -145,7 +173,7 @@
              ))
   (global-set-key (kbd (car b)) (cadr b)))
 
-;; Editing/Development -- should also include things like indentation prefs.
+;;; Editing/Development -- should also include things like indentation prefs.
 (add-hook 'before-save-hook #'whitespace-cleanup)
 
 (with-eval-after-load 'grep
@@ -154,7 +182,7 @@
   (dolist (dir '(".tags" "tags" "package-lock.json"))
     (add-to-list 'grep-find-ignored-files dir)))
 
-;; REPL access
+;;;; REPL access
 (defun +repl-node ()
   (interactive)
   (comint-run "node"))
@@ -200,7 +228,231 @@
     (+with-context
      (funcall (cadr entry)))))
 
-;; Vendoring -- plan to remove
+;;; Org:
+
+;; Notes from Carsten Dominik's talk:
+;; - Most important things are TAB/S-TAB
+;; - And meta up/down/left/right to move notes around (promote/demote etc)
+;;
+;; My additional comments:
+;; - Org-mode, when you consider things like built-in tables and blocks that
+;;   can execute (think finance.org) this really is something that you cannot
+;;   easily copy in vim. It's a powerful tool that reminds me of the REPL.
+;; - In this regard, org-mode files are less like files and more like interactive
+;;   documents. Emacs understands each node as it's own thing, where vim does
+;;   something similar at the text block level.
+
+(use-package org
+  :ensure nil
+  :hook ((org-mode . org-indent-mode))
+  :bind (:map org-mode-map
+              ("M-RET" . nil))
+  :custom
+  (org-modules nil)
+  (org-ellipsis " ▼")
+  (org-cycle-separator-lines 1)
+  (org-todo-keywords
+   '((sequence "TODO(t)" "NEXT(n)" "CURRENT(c)" "WAITING(w)"
+               "|" "DONE(d!)")))
+  (org-log-done 'time)
+  (org-log-into-drawer t)
+  (org-agenda-span 14)
+  (org-agenda-start-on-weekday nil)
+  (org-agenda-restore-windows-after-quit t)
+  (org-archive-location "~/.notes/archive.org::* From %s")
+  (org-directory "~/.notes")
+  (org-agenda-files '("~/.notes"))
+  (org-refile-targets
+   '((nil :maxlevel . 3) ("~/.notes/archive.org" :maxlevel . 3)))
+  (org-agenda-sorting-strategy '(todo-state-down priority-up))
+  (org-agenda-custom-commands
+   '(("a" "Agenda + Unscheduled TODOs"
+      ((agenda "")
+       (todo "TODO|NEXT|CURRENT"
+             ((org-agenda-skip-function
+               '(org-agenda-skip-entry-if 'scheduled 'deadline 'timestamp))
+              (org-agenda-overriding-header "Unscheduled TODOs")))))))
+  (org-icalendar-include-todo nil)
+  (org-icalendar-use-scheduled '(event-if-not-todo event-if-todo))
+  (org-icalendar-use-deadline '(event-if-not-todo event-if-todo)))
+
+;; TODO olivetti is cool!
+;; (use-package olivetti :ensure t
+;;   :custom (olivetti-style nil) (olivetti-body-width 80)
+;;   :hook ((org-mode markdown-mode) . olivetti-mode))
+
+(defun +upload-calendar ()
+  (interactive)
+  (let* ((auth (car (auth-source-search
+                     :host "cloudflare-r2"
+                     :require '(:user :secret))))
+         (process-environment
+          (append
+           (list
+            (concat "AWS_ACCESS_KEY_ID=" (plist-get auth :user))
+            (concat "AWS_SECRET_ACCESS_KEY="
+                    (funcall (plist-get auth :secret)))
+            "AWS_DEFAULT_REGION=auto")
+           process-environment))
+         (buf (get-buffer-create "*aws*")))
+    (with-current-buffer buf
+      (erase-buffer))
+    (let ((status
+           (call-process
+            "aws" nil buf t
+            "s3" "cp"
+            (expand-file-name "~/org.ics")
+            (format "s3://%s/%s" +r2-bucket +r2-object)
+            "--endpoint-url" +r2-endpoint
+            "--content-type" "text/calendar")))
+      (display-buffer buf)
+      (message "aws exited with %s" status)))) ;; for debug
+
+(advice-add 'org-refile :after 'org-save-all-org-buffers)
+
+;; N.B org-icalendar-combined-agenda-file defined
+(defun +export-calendar ()
+  (interactive)
+  (org-save-all-org-buffers)
+  (org-icalendar-combine-agenda-files)
+  (+upload-calendar))
+
+(defun +org-clock-toggle ()
+  (interactive)
+  (if (org-clocking-p) (org-clock-out)
+    (if (and (eq major-mode 'org-mode) (org-entry-is-todo-p))
+        (org-todo "CURRENT") (org-clock-in-last))))
+
+(defun +org-clock-todo-change ()
+  (cond ((string= org-state "CURRENT") (org-clock-in))
+        ((org-clocking-p) (org-clock-out))))
+
+(defun +org-archive-done ()
+  "Archive all DONE entries in the current Org file."
+  (interactive)
+  (org-map-entries
+   (lambda ()
+     (org-archive-subtree))
+   "/DONE"
+   'file))
+
+;;; LLM
+
+(require 'auth-source)
+(require 'json)
+
+(defvar navi-config
+  '(:endpoint "http://localhost:7777/v1/chat/completions"
+    :model "qwen3.5-4b"
+    :auth-host nil))
+
+(defvar navi-system-prompt
+  "You are an expert senior software engineer. Your core expertise
+is Clojure, but you are highly proficient in Go, JavaScript, TypeScript,
+and Java.
+
+Provide elite, production-grade code snippets, concise reviews, or direct
+technical answers. Always default to Clojure unless another language is
+explicitly specified.
+
+CRITICAL DIRECTIVES:
+1. Focus exclusively on idiomatic solutions, stable/standard libraries, and modern best practices.
+2. Be direct, dense, and objective. Strip out conversational filler, introductions, greetings, and concluding remarks.
+3. Deliver answers optimized for a terminal UI: prioritize clean code blocks over long prose explanations
+")
+(defvar navi-buffer-name "*navi*")
+(defun navi--api-key (a)
+  nil)
+
+(defun navi--sentinel (proc _event)
+  (when (memq (process-status proc) '(exit signal))
+    (let* ((curl-buf (process-buffer proc))
+           (output (with-current-buffer curl-buf (buffer-string)))
+           (question (process-get proc :question))
+           (content
+            (or (ignore-errors
+                  (let* ((obj (json-parse-string output :object-type 'alist))
+                         (choices (alist-get 'choices obj)))
+                    (alist-get 'content
+                               (alist-get 'message (aref choices 0)))))
+                (format "[no content]\n%s" output)))
+           (buf (get-buffer-create navi-buffer-name)))
+      (with-current-buffer buf
+        (unless (eq major-mode 'markdown-mode) (markdown-mode))
+        (goto-char (point-max))
+        (insert (if (bobp) "" "\n\n---\n\n")
+                "````user\n" question "\n````\n\n"
+                content "\n"))
+      (kill-buffer curl-buf)
+      (message "navi: response ready (M-x navi-view)"))))
+
+;;;###autoload
+(defun navi (input &optional context context-lang)
+  (interactive
+   (let* ((region (and (use-region-p)
+                       (buffer-substring-no-properties
+                        (region-beginning) (region-end))))
+          (lang (and region
+                     (replace-regexp-in-string
+                      "-\\(ts-\\)?mode\\'" "" (symbol-name major-mode)))))
+     (list (read-string "navi> ") region lang)))
+  (let* ((cfg navi-config)
+         (endpoint (plist-get cfg :endpoint))
+         (model (plist-get cfg :model))
+         (key (navi--api-key (plist-get cfg :auth-host)))
+         (full (if context
+                   (format "```%s\n%s\n```\n\n%s"
+                           (or context-lang "") context input)
+                 input))
+         (payload
+          (json-encode
+           `((model . ,model)
+             (messages . [((role . "system") (content . ,navi-system-prompt))
+                          ((role . "user") (content . ,full))]))))
+         (proc (make-process
+                :name "navi"
+                :buffer (generate-new-buffer " *navi-curl*")
+                :noquery t :coding 'utf-8 :connection-type 'pipe
+                :command `("curl" "-sS" "-X" "POST"
+                           "-H" "Content-Type: application/json"
+                           ,@(when key (list "-H" (concat "Authorization: Bearer " key)))
+                           "--data-binary" "@-" ,endpoint)
+                :sentinel #'navi--sentinel)))
+    (process-put proc :question full)
+    (process-send-string proc payload)
+    (process-send-eof proc)
+    (message "navi: query sent")))
+
+(defun navi-view ()
+  (interactive)
+  (let ((buf (get-buffer navi-buffer-name)))
+    (if buf (pop-to-buffer buf)
+      (message "navi: no responses yet"))))
+
+(defun navi-server ()
+  "Start llama-server in the background."
+  (interactive)
+  (make-process
+   :name "navi-server"
+   :buffer (get-buffer-create "*navi-server*")
+   :command `("llama-server"
+              "-m" ,(expand-file-name
+                     "~/models/Qwen3.5-4B-UD-Q3_K_XL.gguf")
+              "--jinja"
+              "--host" "127.0.0.1"
+              "--port" "7777"
+              "-c" "16384"
+              "--metrics"
+              "-ngl" "-1"
+              "-np" "1"
+              "--temp" "0.6"
+              "--top-p" "0.95"
+              "--top-k" "20"
+              "--min-p" "0.00"
+              "--presence-penalty" "0.0"
+              "--repeat-penalty" "1.0")))
+
+;;; Vendoring -- plan to remove
 (add-to-list 'load-path (expand-file-name "vendor" user-emacs-directory))
 
 (autoload 'go-mode "go-mode" nil t)
