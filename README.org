@@ -1,0 +1,21 @@
+* 🔱 Spartan Emacs
+
+~A simple Emacs configuration.~
+
+** Shell Comparison
+I also have a similar project focused around the shell + vim.
+
+Vim itself is much more self-contained i.e it already has basically
+every syntax file by default like zig/js etc.
+
+However to provide non-editing features you need more dependencies i.e taskwarrior.
+
+Both aim for a zero dependencies, reliable environment to operate in in different ways.
+
+- Emacs by default, comes with org-mode for example.
+
+** Note on vendoring
+
+Script is used to vendor packages but they are not yet saved in source control,
+this is because I plan to go through a phase of removing these deps. What is
+left we should then commit here so they are properly vendored moving forwards.

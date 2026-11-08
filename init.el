@@ -6,27 +6,10 @@
 
 ;;; Code:
 
-(require 'outline)
-
-(setq outline-minor-mode-cycle t)
-
-(defun mx/elisp-outline-setup ()
-  ;; Use only comment headings, regardless of the major mode's
-  ;; outline search implementation.
-  (setq-local outline-search-function nil)
-  (setq-local outline-regexp ";;;+ ")
-  (setq-local outline-level #'lisp-outline-level)
-  (setq-local outline-default-state 1) ; Show top-level headings only
-  (outline-minor-mode 1))
-
-(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
-
-(define-key outline-minor-mode-map (kbd "<backtab>")
-            #'outline-cycle-buffer)
-
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
+(fringe-mode 0)
 
 (electric-pair-mode 1)
 (show-paren-mode 1)
@@ -132,18 +115,45 @@
          (dirs (directory-files full-path nil "^[A-z]")))
     (dired (concat full-path "/" (completing-read ">> " dirs)))))
 
+(setq vc-dir-auto-hide-up-to-date 'revert
+      vc-dir-save-some-buffers-on-revert t)
+(setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
+
+;; makes it so that after closing vc-dir buffer, you go back to the previous buffer you were on
+(add-to-list 'display-buffer-alist
+             '("\\`\\*vc-dir\\*"
+               "\\`\\*vc-change-log\\*"
+               (display-buffer-pop-up-window)
+               (inhibit-same-window . t)))
+
+;;;; Environment
+
+(if (executable-find "rg")
+                (progn
+                  (setq xref-search-program 'ripgrep)
+                  (setq grep-command "rg -nS --no-heading ")
+                  (setq grep-find-template "rg <C> --null -nH -e <R> <D>")))
+
+(setenv "MANROFFOPT" "-P-c")
+(setq Man-notify-method 'pushy pop-up-frames nil) ;; avoid creating frames for man
+
+;;;; Bindings
+
 (dolist (b `(
              ("M-s" save-buffer)
              ("M-o" +other-window-or-split)
              ("M-O" delete-other-windows)
              ("M-H" ,help-map)
+             ("M-D" duplicate-dwim)
+             ("M-g v" vc-dir-root)
+             ("M-g l" vc-print-root-log)
              ("M-RET" +toggle-frame-fullscreen)
              ("M--" ,(il (set-frame-size nil 160 55)))
              ("C-;" hippie-expand)
              ("M-;" completion-at-point)
              ("M-/" comment-line)
-             ("M-p" backward-paragraph)
-             ("M-n" forward-paragraph)
+             ("M-0" backward-paragraph)
+             ("M-9" forward-paragraph)
              ("M-F" query-replace-regexp)
              ("M-K" kill-whole-line)
              ("C-h" delete-backward-char)
@@ -153,14 +163,15 @@
              ("C-c l" ,(ff user-emacs-directory "local.el"))
              ("C-c n" ,(ff (getenv "HOME") "/.notes/index.org"))
              ("C-c a" ,(il (org-agenda nil "a")))
+             ("M-p" project-find-file)
              ("M-P" ,(il (+select-folder "~/src")))
              ("C-c c" org-capture)
              ("C-c h" org-insert-heading) ;; org-toggle-heading is what I sometimes want too.
              ("M-u" undo)
              ("M-r" undo-redo)
-             ("M-i" ,(il (+with-context (call-interactively 'rgrep))))
              ;; ("M-I" ,(il (+with-context (call-interactively 'occur))))
-             ("M-I" imenu) ;; bad binding but also a reminder for i(ndex)menu
+             ("M-i" imenu) ;; bad binding but also a reminder for i(ndex)menu
+             ("M-I" ,(il (+with-context (call-interactively 'rgrep))))
              ("C-c t" +ctags)
              ("C-c m" recompile)
              ("C-c M" ,(il (+with-context (call-interactively 'compile))))
@@ -169,9 +180,18 @@
              ("M-Q" sql-connect)
              ("C-w" +kill-region-or-backward-word)
              ("C-z" +terminal)
-             ("C-c p" project-find-file)
              ))
   (global-set-key (kbd (car b)) (cadr b)))
+
+;; vc reference
+;; - g - refresh status
+;; - x - hide clean/ignored entries
+;; - m/u - mark/unmark files
+;; - i - register new files
+;; - v - start a commit
+;; - l/L - show history for the selected file
+;; - P - push current branch
+;; - + - pull current branch (set rebase.true in git config too)
 
 ;;; Editing/Development -- should also include things like indentation prefs.
 (add-hook 'before-save-hook #'whitespace-cleanup)
@@ -228,7 +248,103 @@
     (+with-context
      (funcall (cadr entry)))))
 
-;;; Org:
+;;;; Dev utils
+
+;; possibly not needed, consult emacs-solo
+(defun +vc-pr ()
+  (interactive)
+  (shell-command
+   (format "gh pr %s"
+           (pcase (completing-read "Stage: " '("Draft" "Review" "View") nil t)
+             ("Draft" "create --draft --fill")
+             ("Review" "create --fill")
+             ("View" "view --web")))))
+
+(defun +cloud-sql-proxy-start ()
+  "Start a Cloud SQL Proxy instance. Requires +cloud-sql-instances var to
+be set, look at local-example.el for help here."
+  (interactive)
+  (let* ((choice
+          (completing-read
+           "Cloud SQL instance: "
+           (mapcar #'car +cloud-sql-instances)
+           nil t))
+         (config (assoc choice +cloud-sql-instances))
+         (instance (plist-get (cdr config) :instance))
+         (port (number-to-string (plist-get (cdr config) :port)))
+         (buffer (get-buffer-create
+                  (format "*cloud-sql-proxy:%s*" choice))))
+    (start-process
+     (format "cloud-sql-proxy:%s" choice)
+     buffer
+     "cloud-sql-proxy"
+     "--auto-iam-authn"
+     "-p" port
+     instance)
+    (message "Started Cloud SQL Proxy for %s on port %s" choice port)))
+
+(defun +vc-pr ()
+  (interactive)
+  (shell-command
+   (format "gh pr %s"
+           (pcase (completing-read "Stage: " '("Draft" "Review" "View") nil t)
+             ("Draft" "create --draft --fill")
+             ("Review" "create --fill")
+             ("View" "view --web")))))
+
+;; ctags
+(defun +ctags ()
+  (interactive)
+  (+with-context
+   (make-process
+    :name "ctags" :buffer nil
+    :command '("ctags" "-eR" "-f" ".tags"
+               "--exclude=node_modules" "--exclude=dist" ".")
+    :sentinel (lambda (_ e) (message "ctags: %s" (string-trim e))))))
+
+(defun +ctags-link ()
+  (when-let* ((dir (locate-dominating-file default-directory ".tags")))
+    (let ((tags-file (expand-file-name ".tags" dir)))
+      (when (and (file-regular-p tags-file)
+                 (not (member tags-file tags-table-list)))
+        (visit-tags-table tags-file t)))))
+
+(add-hook 'find-file-hook #'+ctags-link)
+
+(defun mx/speedbar-toggle ()
+  (interactive)
+  (speedbar-window)
+  (when-let* ((buf (bound-and-true-p speedbar-buffer))
+              (win (get-buffer-window buf)))
+    (select-window win)))
+
+;;;; Languages
+
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs '((java-mode java-ts-mode) . ("jdtlsw"))))
+
+;;; Emacs Modes:
+;;;; Outline:
+
+(require 'outline)
+
+(setq outline-minor-mode-cycle t)
+
+(defun mx/elisp-outline-setup ()
+  ;; Use only comment headings, regardless of the major mode's
+  ;; outline search implementation.
+  (setq-local outline-search-function nil)
+  (setq-local outline-regexp ";;;+ ")
+  (setq-local outline-level #'lisp-outline-level)
+  (setq-local outline-default-state 1) ; Show top-level headings only
+  (outline-minor-mode 1))
+
+(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
+
+(define-key outline-minor-mode-map (kbd "<backtab>")
+            #'outline-cycle-buffer)
+
+;;;; Org:
 
 ;; Notes from Carsten Dominik's talk:
 ;; - Most important things are TAB/S-TAB
@@ -256,6 +372,7 @@
                "|" "DONE(d!)")))
   (org-log-done 'time)
   (org-log-into-drawer t)
+  (org-startup-folded 'show3levels)
   (org-agenda-span 14)
   (org-agenda-start-on-weekday nil)
   (org-agenda-restore-windows-after-quit t)
@@ -343,7 +460,7 @@
 
 (defvar navi-config
   '(:endpoint "http://localhost:7777/v1/chat/completions"
-    :model "qwen3.5-4b"
+    :model "qwen3.5-9b"
     :auth-host nil))
 
 (defvar navi-system-prompt

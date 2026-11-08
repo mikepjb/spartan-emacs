@@ -5,3 +5,6 @@ ielm-history.eld
 *~
 vendor/
 custom.el
+projects.eld
+multisession/
+transient/
