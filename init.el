@@ -1,60 +1,69 @@
 ;;; init.el -*- lexical-binding: t; -*-
-(require 'seq) ;; required for repl-mode
+;;
+;; Designed for Emacs 31.1 on Mac OS 27 or Arch Linux
+;;
+;;; Commentary (can delete later, just organisational reference currently):
+;; - ALL sections should be considered safe since they are sourced from the same folder
+;; Overall layout:
+;; - Emacs general config? UI config
+;; - imports (i.e specific fns like REPL and navi)
 
-;; TODO vc mode setup > magit
-;; review how emacs-solo works to use stuff like shown in the screenshots (docker?)
-;; (setq debug-on-error t)
+;; - emacs/ui
+;; - environment
+;; - editing/buffer behaviour (include 3rd party major-modes)
+;; - "Extensions"
+;;   - use-case specific i.e search/cli tools, fmt-on-save, version control, llms, REPL, org-mode, databases
 
-;;; Code:
+;;;; 1. Environment
+
+(setq read-process-output-max (* 4 1024 1024)
+      load-prefer-newer t ;; init.el > init.elc if newer
+      debug-on-error nil) ;; switch to t for help debugging emacs.
+
+(load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
+
+;;;; 2. Interface
 
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
 (fringe-mode 0)
+(fido-vertical-mode 1)
+(blink-cursor-mode 0)
+
+(load-theme 'flow t)
+
+(when-let* ((font (and (display-graphic-p)
+                       (car (member "Rec Mono Linear" (font-family-list))))))
+  (set-face-attribute 'default nil :family font :height 150))
+
+(setq inhibit-startup-screen t
+      ns-use-native-fullscreen nil
+      ring-bell-function 'ignore
+      use-dialog-box nil
+      use-file-dialog nil
+      use-short-answers t
+      split-width-threshold 160
+      split-height-threshold nil
+      split-window-preferred-function #'+split-window-logic
+      frame-resize-pixelwise t)
+
+(setq-default cursor-in-non-selected-windows nil)
+
+;;;; 3. Editing and buffers
 
 (electric-pair-mode 1)
 (show-paren-mode 1)
 
-(fido-vertical-mode 1)
+(c-add-style ;; custom java intendation style
+ "+java"
+ '("stroustrup" (c-offsets-alist . ((arglist-cont-nonempty . 0)
+                                    (statement-block-intro . +)))))
 
-;; (load-theme 'modus-vivendi t)
-(load-theme 'flow t)
-(set-face-attribute 'default nil :font "Rec Mono Linear" :height 140)
-
-(setq
- read-process-output-max (* 4 1024 1024)
- inhibit-startup-screen t
- ns-use-native-fullscreen nil
- ring-bell-function 'ignore
- eshell-banner-message ""
- use-dialog-box nil
- use-file-dialog nil
- use-short-answers t
- split-width-threshold 160
- split-height-threshold nil
- split-window-preferred-function #'+split-window-logic
- frame-resize-pixelwise t
- load-prefer-newer t           ;; init.el > init.elc if newer
- dired-listing-switches "-lah" ;; human readable file sizes
- c-default-style '((java-mode . "+java") (other . "gnu"))
- c-basic-offset 4
- vc-follow-symlinks t
- vc-hide-up-to-date t
- vc-handled-backends '(Git)
- vc-log-show-diff nil
- vc-git-log-edit-summary-target 50
- create-lockfiles nil
- make-backup-files nil
- auto-save-default nil
- isearch-wrap-pause 'no
- compilation-always-kill t
- compilation-scroll-output t
- js-indent-level 2
- sql-input-ring-file-name (expand-file-name "sql-history" user-emacs-directory))
-
-(setq custom-file (locate-user-emacs-file "custom.el"))
-(load custom-file 'noerror 'nomessage)
-(load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
+(setq c-default-style '((java-mode . "+java") (other . "gnu"))
+      c-basic-offset 4
+      js-indent-level 2
+      isearch-wrap-pause 'no)
 
 (setq-default
  display-fill-column-indicator-column 80
@@ -62,16 +71,55 @@
  indent-tabs-mode nil
  tab-width 2
  standard-indent 2
- whitespace-style '(face trailing tabs empty indentation::space)
- cursor-in-non-selected-windows nil)
+ whitespace-style '(face trailing tabs empty indentation::space))
 
-(c-add-style ;; custom java intendation style
- "+java"
- '("stroustrup" (c-offsets-alist . ((arglist-cont-nonempty . 0)
-                                    (statement-block-intro . +)))))
+;;;; 4. State and persistence
+
+(savehist-mode 1)
+(save-place-mode 1)
+
+(setq create-lockfiles nil
+      make-backup-files nil
+      auto-save-default nil
+      custom-file (locate-user-emacs-file "custom.el"))
+
+(load custom-file 'noerror 'nomessage)
+
+
+;;;; 5. Workflows
+;;;;; 5.i REPLs
+
+(require 'seq)
+
+;;;;; 5.ii Terminal
+
+(setq eshell-banner-message "")
+
+;;;;; 5.iii Compilation and testing
+
+;;;;; 5.iv File management
+
+(setq dired-listing-switches "-lah") ;; human readable file sizes
+
+;;;;; 5.v Version control
+
+(setq vc-follow-symlinks t
+      vc-hide-up-to-date t
+      vc-handled-backends '(Git)
+      vc-log-show-diff nil
+      vc-git-log-edit-summary-target 50)
+
+;;;;; 5.vi Databases
+
+(setq sql-input-ring-file-name
+      (expand-file-name "sql-history" user-emacs-directory))
+
+;;;; 6. Global Bindings
 
 (defmacro il (&rest body) `(lambda () (interactive) ,@body))
 (defmacro ff (&rest path) `(il (find-file (concat ,@path))))
+
+;;; OLD CONFIG
 
 (defvar +context-markers
   '("Makefile" "gradlew" "pom.xml" "go.mod" "package.json" "deps.edn" ".git"))
@@ -120,36 +168,25 @@
 ;;       vc-dir-save-some-buffers-on-revert t)
 ;; (setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
 
-;; (defun mx/vc-display-in-other-window (buffer alist)
-;;   "Split a single-window frame or reuse another window on it."
-;;   (if (one-window-p t)
-;;       (display-buffer-below-selected buffer alist)
-;;     (when-let ((window (get-lru-window (selected-frame) nil t)))
-;;       (display-buffer-in-previous-window
-;;        buffer (cons (cons 'previous-window window) alist)))))
-
-;; (add-to-list 'display-buffer-alist
-;;              '("\\`\\*vc-\\(?:dir\\|change-log\\)\\*"
-;;                (mx/vc-display-in-other-window
-;;                 display-buffer-no-window)
-;;                (inhibit-same-window . t)
-;;                (allow-no-window . t)))
-
 ;;;; Environment
 
-(if (executable-find "rg")
-                (progn
-                  (setq xref-search-program 'ripgrep)
-                  (setq grep-command "rg -nS --no-heading ")
-                  (setq grep-find-template "rg <C> --null -nH -e <R> <D>")))
+(when (executable-find "rg")
+  (setq xref-search-program 'ripgrep)
+  (setq grep-command "rg -nS --no-heading ")
+  (setq grep-find-template "rg <C> --null -nH -e <R> <D>"))
+
+(with-eval-after-load 'grep
+  (dolist (dir '("node_modules" "dist" "build" "target" ".idea"))
+    (add-to-list 'grep-find-ignored-directories dir))
+  (dolist (dir '(".tags" "tags" "package-lock.json"))
+    (add-to-list 'grep-find-ignored-files dir)))
 
 (setenv "MANROFFOPT" "-P-c")
 (setq Man-notify-method 'pushy pop-up-frames nil) ;; avoid creating frames for man
 
 ;;;; Bindings
 
-(dolist (b `(
-             ("M-s" save-buffer)
+(dolist (b `(("M-s" save-buffer)
              ("M-o" +other-window-or-split)
              ("M-O" delete-other-windows)
              ("M-H" ,help-map)
@@ -161,8 +198,8 @@
              ("C-;" hippie-expand)
              ("M-;" completion-at-point)
              ("M-/" comment-line)
-             ("M-0" backward-paragraph)
-             ("M-9" forward-paragraph)
+             ("M-p" backward-paragraph)
+             ("M-n" forward-paragraph)
              ("M-F" query-replace-regexp)
              ("M-K" kill-whole-line)
              ("C-h" delete-backward-char)
@@ -172,7 +209,7 @@
              ("C-c l" ,(ff user-emacs-directory "local.el"))
              ("C-c n" ,(ff (getenv "HOME") "/.notes/index.org"))
              ("C-c a" ,(il (org-agenda nil "a")))
-             ("M-p" project-find-file)
+             ;; ("M-p" project-find-file)
              ("M-P" ,(il (+select-folder "~/src")))
              ("C-c c" org-capture)
              ("C-c h" org-insert-heading) ;; org-toggle-heading is what I sometimes want too.
@@ -188,8 +225,7 @@
              ("M-R" +repl)
              ("M-Q" sql-connect)
              ("C-w" +kill-region-or-backward-word)
-             ("C-z" +terminal)
-             ))
+             ("C-z" +terminal)))
   (global-set-key (kbd (car b)) (cadr b)))
 
 ;; vc reference
@@ -201,14 +237,10 @@
 ;; - l/L - show history for the selected file
 ;; - P - push current branch
 ;; - + - pull current branch (set rebase.true in git config too
-;;; Editing/Development -- should also include things like indentation prefs.
-(add-hook 'before-save-hook #'whitespace-cleanup)
 
-(with-eval-after-load 'grep
-  (dolist (dir '("node_modules" "dist" "build" "target" ".idea"))
-    (add-to-list 'grep-find-ignored-directories dir))
-  (dolist (dir '(".tags" "tags" "package-lock.json"))
-    (add-to-list 'grep-find-ignored-files dir)))
+;;; Editing/Development -- should also include things like indentation prefs.
+
+(add-hook 'before-save-hook #'whitespace-cleanup)
 
 ;;;; REPL access
 (defun +repl-node ()
@@ -334,7 +366,7 @@ be set, look at local-example.el for help here."
   (setq-local outline-search-function nil)
   (setq-local outline-regexp ";;;+ ")
   (setq-local outline-level #'lisp-outline-level)
-  (setq-local outline-default-state 1) ; Show top-level headings only
+  ;; (setq-local outline-default-state 2) ; Show top-level headings only
   (outline-minor-mode 1))
 
 (add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
