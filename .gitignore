@@ -8,3 +8,4 @@ custom.el
 projects.eld
 multisession/
 transient/
+eshell/
