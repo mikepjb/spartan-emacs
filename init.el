@@ -3,6 +3,7 @@
 
 ;; TODO vc mode setup > magit
 ;; review how emacs-solo works to use stuff like shown in the screenshots (docker?)
+;; (setq debug-on-error t)
 
 ;;; Code:
 
@@ -115,16 +116,24 @@
          (dirs (directory-files full-path nil "^[A-z]")))
     (dired (concat full-path "/" (completing-read ">> " dirs)))))
 
-(setq vc-dir-auto-hide-up-to-date 'revert
-      vc-dir-save-some-buffers-on-revert t)
-(setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
+;; (setq vc-dir-auto-hide-up-to-date 'revert
+;;       vc-dir-save-some-buffers-on-revert t)
+;; (setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
 
-;; makes it so that after closing vc-dir buffer, you go back to the previous buffer you were on
-(add-to-list 'display-buffer-alist
-             '("\\`\\*vc-dir\\*"
-               "\\`\\*vc-change-log\\*"
-               (display-buffer-pop-up-window)
-               (inhibit-same-window . t)))
+;; (defun mx/vc-display-in-other-window (buffer alist)
+;;   "Split a single-window frame or reuse another window on it."
+;;   (if (one-window-p t)
+;;       (display-buffer-below-selected buffer alist)
+;;     (when-let ((window (get-lru-window (selected-frame) nil t)))
+;;       (display-buffer-in-previous-window
+;;        buffer (cons (cons 'previous-window window) alist)))))
+
+;; (add-to-list 'display-buffer-alist
+;;              '("\\`\\*vc-\\(?:dir\\|change-log\\)\\*"
+;;                (mx/vc-display-in-other-window
+;;                 display-buffer-no-window)
+;;                (inhibit-same-window . t)
+;;                (allow-no-window . t)))
 
 ;;;; Environment
 
@@ -191,8 +200,7 @@
 ;; - v - start a commit
 ;; - l/L - show history for the selected file
 ;; - P - push current branch
-;; - + - pull current branch (set rebase.true in git config too)
-
+;; - + - pull current branch (set rebase.true in git config too
 ;;; Editing/Development -- should also include things like indentation prefs.
 (add-hook 'before-save-hook #'whitespace-cleanup)
 
@@ -249,16 +257,6 @@
      (funcall (cadr entry)))))
 
 ;;;; Dev utils
-
-;; possibly not needed, consult emacs-solo
-(defun +vc-pr ()
-  (interactive)
-  (shell-command
-   (format "gh pr %s"
-           (pcase (completing-read "Stage: " '("Draft" "Review" "View") nil t)
-             ("Draft" "create --draft --fill")
-             ("Review" "create --fill")
-             ("View" "view --web")))))
 
 (defun +cloud-sql-proxy-start ()
   "Start a Cloud SQL Proxy instance. Requires +cloud-sql-instances var to

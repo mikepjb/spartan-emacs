@@ -1,7 +1,5 @@
 * 🔱 Spartan Emacs
-
 ~A simple Emacs configuration.~
-
 ** Shell Comparison
 I also have a similar project focused around the shell + vim.
 
