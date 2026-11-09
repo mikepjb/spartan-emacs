@@ -8,11 +8,7 @@
 ;; - Emacs general config? UI config
 ;; - imports (i.e specific fns like REPL and navi)
 
-;; - emacs/ui
-;; - environment
-;; - editing/buffer behaviour (include 3rd party major-modes)
-;; - "Extensions"
-;;   - use-case specific i.e search/cli tools, fmt-on-save, version control, llms, REPL, org-mode, databases
+;; TODO roll your own olivetti
 
 ;;;; 1. Environment
 
@@ -21,6 +17,8 @@
       debug-on-error nil) ;; switch to t for help debugging emacs.
 
 (load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
+
+(require 'seq) ;; use for REPL + context helpers
 
 ;;;; 2. Interface
 
@@ -50,6 +48,27 @@
 
 (setq-default cursor-in-non-selected-windows nil)
 
+(defun +other-window-or-split ()
+  "If one window, split, otherwise invoke 'other-window'"
+  (interactive)
+  (when (= (length (window-list)) 1)
+      (split-window-right))
+  (other-window 1))
+
+(defun +toggle-maximized-borderless ()
+  "Toggle between a normal window and a borderless maximized window."
+  (interactive)
+  (let ((undecorated (frame-parameter nil 'undecorated)))
+    (set-frame-parameter nil 'undecorated (not undecorated))
+    (toggle-frame-maximized)))
+
+(defun +toggle-frame-fullscreen ()
+  "Platform-appropriate fullscreen toggle."
+  (interactive)
+  (if (eq system-type 'darwin)
+      (toggle-frame-fullscreen)
+    (+toggle-maximized-borderless)))
+
 ;;;; 3. Editing and buffers
 
 (electric-pair-mode 1)
@@ -73,6 +92,34 @@
  standard-indent 2
  whitespace-style '(face trailing tabs empty indentation::space))
 
+(add-hook 'before-save-hook #'whitespace-cleanup)
+
+(defun +kill-region-or-backward-word ()
+  (interactive)
+  (cond ((region-active-p) (call-interactively #'kill-region))
+        (t (backward-kill-word 1))))
+
+(require 'outline)
+
+(setq outline-minor-mode-cycle t)
+
+(defun mx/elisp-outline-setup ()
+  ;; Use only comment headings, regardless of the major mode's
+  ;; outline search implementation.
+  (setq-local outline-search-function nil)
+  (setq-local outline-regexp ";;;+ ")
+  (setq-local outline-level #'lisp-outline-level)
+  (setq-local outline-default-state 4)
+  (outline-minor-mode 1))
+
+(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
+
+(define-key outline-minor-mode-map (kbd "<backtab>")
+            #'outline-cycle-buffer)
+
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs '((java-mode java-ts-mode) . ("jdtlsw"))))
+
 ;;;; 4. State and persistence
 
 (savehist-mode 1)
@@ -85,77 +132,24 @@
 
 (load custom-file 'noerror 'nomessage)
 
-
 ;;;; 5. Workflows
-;;;;; 5.i REPLs
+;;;;; 5.i Project
 
-(require 'seq)
+(require 'project)
 
-;;;;; 5.ii Terminal
+(setq project-vc-extra-root-markers
+      '("Makefile" "gradlew" "pom.xml"
+        "go.mod" "package.json" "deps.edn"))
 
-(setq eshell-banner-message "")
-
-;;;;; 5.iii Compilation and testing
-
-;;;;; 5.iv File management
-
-(setq dired-listing-switches "-lah") ;; human readable file sizes
-
-;;;;; 5.v Version control
-
-(setq vc-follow-symlinks t
-      vc-hide-up-to-date t
-      vc-handled-backends '(Git)
-      vc-log-show-diff nil
-      vc-git-log-edit-summary-target 50)
-
-;;;;; 5.vi Databases
-
-(setq sql-input-ring-file-name
-      (expand-file-name "sql-history" user-emacs-directory))
-
-;;;; 6. Global Bindings
-
-(defmacro il (&rest body) `(lambda () (interactive) ,@body))
-(defmacro ff (&rest path) `(il (find-file (concat ,@path))))
-
-;;; OLD CONFIG
-
-(defvar +context-markers
-  '("Makefile" "gradlew" "pom.xml" "go.mod" "package.json" "deps.edn" ".git"))
-
-(defmacro +with-context (&rest body)
-  `(let ((default-directory
-          (or (seq-some (lambda (f) (locate-dominating-file default-directory f))
-                        +context-markers)
-              default-directory)))
+(defmacro +with-project-context (&rest body)
+  "Evaluate BODY at the project root, or in the current directory."
+  (declare (indent 0) (debug t))
+  `(let* ((project (project-current nil))
+          (default-directory
+           (if project
+               (project-root project)
+             default-directory)))
      ,@body))
-
-(defun +other-window-or-split ()
-  "If one window, split, otherwise invoke 'other-window'"
-  (interactive)
-  (when (= (length (window-list)) 1)
-      (split-window-right))
-  (other-window 1))
-
-(defun +kill-region-or-backward-word ()
-  (interactive)
-  (cond ((region-active-p) (call-interactively #'kill-region))
-        (t (backward-kill-word 1))))
-
-(defun +toggle-maximized-borderless ()
-  "Toggle between a normal window and a borderless maximized window."
-  (interactive)
-  (let ((undecorated (frame-parameter nil 'undecorated)))
-    (set-frame-parameter nil 'undecorated (not undecorated))
-    (toggle-frame-maximized)))
-
-(defun +toggle-frame-fullscreen ()
-  "Platform-appropriate fullscreen toggle."
-  (interactive)
-  (if (eq system-type 'darwin)
-      (toggle-frame-fullscreen)
-    (+toggle-maximized-borderless)))
 
 (defun +select-folder (path)
   "Find file for a given PATH."
@@ -164,85 +158,8 @@
          (dirs (directory-files full-path nil "^[A-z]")))
     (dired (concat full-path "/" (completing-read ">> " dirs)))))
 
-;; (setq vc-dir-auto-hide-up-to-date 'revert
-;;       vc-dir-save-some-buffers-on-revert t)
-;; (setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
+;;;;; 5.ii REPL
 
-;;;; Environment
-
-(when (executable-find "rg")
-  (setq xref-search-program 'ripgrep)
-  (setq grep-command "rg -nS --no-heading ")
-  (setq grep-find-template "rg <C> --null -nH -e <R> <D>"))
-
-(with-eval-after-load 'grep
-  (dolist (dir '("node_modules" "dist" "build" "target" ".idea"))
-    (add-to-list 'grep-find-ignored-directories dir))
-  (dolist (dir '(".tags" "tags" "package-lock.json"))
-    (add-to-list 'grep-find-ignored-files dir)))
-
-(setenv "MANROFFOPT" "-P-c")
-(setq Man-notify-method 'pushy pop-up-frames nil) ;; avoid creating frames for man
-
-;;;; Bindings
-
-(dolist (b `(("M-s" save-buffer)
-             ("M-o" +other-window-or-split)
-             ("M-O" delete-other-windows)
-             ("M-H" ,help-map)
-             ("M-D" duplicate-dwim)
-             ("M-g v" vc-dir-root)
-             ("M-g l" vc-print-root-log)
-             ("M-RET" +toggle-frame-fullscreen)
-             ("M--" ,(il (set-frame-size nil 160 55)))
-             ("C-;" hippie-expand)
-             ("M-;" completion-at-point)
-             ("M-/" comment-line)
-             ("M-p" backward-paragraph)
-             ("M-n" forward-paragraph)
-             ("M-F" query-replace-regexp)
-             ("M-K" kill-whole-line)
-             ("C-h" delete-backward-char)
-             ("C-j" newline) ;; autoindents
-             ("M-j" ,(il (join-line -1)))
-             ("C-c i" ,(ff user-emacs-directory "init.el"))
-             ("C-c l" ,(ff user-emacs-directory "local.el"))
-             ("C-c n" ,(ff (getenv "HOME") "/.notes/index.org"))
-             ("C-c a" ,(il (org-agenda nil "a")))
-             ;; ("M-p" project-find-file)
-             ("M-P" ,(il (+select-folder "~/src")))
-             ("C-c c" org-capture)
-             ("C-c h" org-insert-heading) ;; org-toggle-heading is what I sometimes want too.
-             ("M-u" undo)
-             ("M-r" undo-redo)
-             ;; ("M-I" ,(il (+with-context (call-interactively 'occur))))
-             ("M-i" imenu) ;; bad binding but also a reminder for i(ndex)menu
-             ("M-I" ,(il (+with-context (call-interactively 'rgrep))))
-             ("C-c t" +ctags)
-             ("C-c m" recompile)
-             ("C-c M" ,(il (+with-context (call-interactively 'compile))))
-             ("C-c ." +test)
-             ("M-R" +repl)
-             ("M-Q" sql-connect)
-             ("C-w" +kill-region-or-backward-word)
-             ("C-z" +terminal)))
-  (global-set-key (kbd (car b)) (cadr b)))
-
-;; vc reference
-;; - g - refresh status
-;; - x - hide clean/ignored entries
-;; - m/u - mark/unmark files
-;; - i - register new files
-;; - v - start a commit
-;; - l/L - show history for the selected file
-;; - P - push current branch
-;; - + - pull current branch (set rebase.true in git config too
-
-;;; Editing/Development -- should also include things like indentation prefs.
-
-(add-hook 'before-save-hook #'whitespace-cleanup)
-
-;;;; REPL access
 (defun +repl-node ()
   (interactive)
   (comint-run "node"))
@@ -285,10 +202,51 @@
            (t
             (+repl--choose entries)))))
     (other-window-prefix)
-    (+with-context
+    (+with-project-context
      (funcall (cadr entry)))))
 
-;;;; Dev utils
+;;;;; 5.iii Terminal
+
+(setq eshell-banner-message "")
+
+;;;;; 5.iv Compilation and testing
+
+;;;;; 5.v File management
+
+(setq dired-listing-switches "-lah") ;; human readable file sizes
+
+(defun mx/speedbar-toggle ()
+  (interactive)
+  (speedbar-window)
+  (when-let* ((buf (bound-and-true-p speedbar-buffer))
+              (win (get-buffer-window buf)))
+    (select-window win)))
+
+;;;;; 5.v Version control
+
+(setq vc-follow-symlinks t
+      vc-hide-up-to-date t
+      vc-handled-backends '(Git)
+      vc-log-show-diff nil
+      vc-git-log-edit-summary-target 50)
+
+;; (setq vc-dir-auto-hide-up-to-date 'revert
+;;       vc-dir-save-some-buffers-on-revert t)
+;; (setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
+
+(defun +vc-pr ()
+  (interactive)
+  (shell-command
+   (format "gh pr %s"
+           (pcase (completing-read "Stage: " '("Draft" "Review" "View") nil t)
+             ("Draft" "create --draft --fill")
+             ("Review" "create --fill")
+             ("View" "view --web")))))
+
+;;;;; 5.vi Databases
+
+(setq sql-input-ring-file-name
+      (expand-file-name "sql-history" user-emacs-directory))
 
 (defun +cloud-sql-proxy-start ()
   "Start a Cloud SQL Proxy instance. Requires +cloud-sql-instances var to
@@ -313,19 +271,22 @@ be set, look at local-example.el for help here."
      instance)
     (message "Started Cloud SQL Proxy for %s on port %s" choice port)))
 
-(defun +vc-pr ()
-  (interactive)
-  (shell-command
-   (format "gh pr %s"
-           (pcase (completing-read "Stage: " '("Draft" "Review" "View") nil t)
-             ("Draft" "create --draft --fill")
-             ("Review" "create --fill")
-             ("View" "view --web")))))
+;;;;; 5.vii Search
 
-;; ctags
+(when (executable-find "rg")
+  (setq xref-search-program 'ripgrep)
+  (setq grep-command "rg -nS --no-heading ")
+  (setq grep-find-template "rg <C> --null -nH -e <R> <D>"))
+
+(with-eval-after-load 'grep
+  (dolist (dir '("node_modules" "dist" "build" "target" ".idea"))
+    (add-to-list 'grep-find-ignored-directories dir))
+  (dolist (dir '(".tags" "tags" "package-lock.json"))
+    (add-to-list 'grep-find-ignored-files dir)))
+
 (defun +ctags ()
   (interactive)
-  (+with-context
+  (+with-project-context
    (make-process
     :name "ctags" :buffer nil
     :command '("ctags" "-eR" "-f" ".tags"
@@ -341,52 +302,12 @@ be set, look at local-example.el for help here."
 
 (add-hook 'find-file-hook #'+ctags-link)
 
-(defun mx/speedbar-toggle ()
-  (interactive)
-  (speedbar-window)
-  (when-let* ((buf (bound-and-true-p speedbar-buffer))
-              (win (get-buffer-window buf)))
-    (select-window win)))
+;;;;; 5.viii Documentation
 
-;;;; Languages
+(setenv "MANROFFOPT" "-P-c")
+(setq Man-notify-method 'pushy pop-up-frames nil) ;; avoid creating frames for man
 
-(with-eval-after-load 'eglot
-  (add-to-list 'eglot-server-programs '((java-mode java-ts-mode) . ("jdtlsw"))))
-
-;;; Emacs Modes:
-;;;; Outline:
-
-(require 'outline)
-
-(setq outline-minor-mode-cycle t)
-
-(defun mx/elisp-outline-setup ()
-  ;; Use only comment headings, regardless of the major mode's
-  ;; outline search implementation.
-  (setq-local outline-search-function nil)
-  (setq-local outline-regexp ";;;+ ")
-  (setq-local outline-level #'lisp-outline-level)
-  ;; (setq-local outline-default-state 2) ; Show top-level headings only
-  (outline-minor-mode 1))
-
-(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
-
-(define-key outline-minor-mode-map (kbd "<backtab>")
-            #'outline-cycle-buffer)
-
-;;;; Org:
-
-;; Notes from Carsten Dominik's talk:
-;; - Most important things are TAB/S-TAB
-;; - And meta up/down/left/right to move notes around (promote/demote etc)
-;;
-;; My additional comments:
-;; - Org-mode, when you consider things like built-in tables and blocks that
-;;   can execute (think finance.org) this really is something that you cannot
-;;   easily copy in vim. It's a powerful tool that reminds me of the REPL.
-;; - In this regard, org-mode files are less like files and more like interactive
-;;   documents. Emacs understands each node as it's own thing, where vim does
-;;   something similar at the text block level.
+;;;;; 5.ix Org
 
 (use-package org
   :ensure nil
@@ -423,46 +344,7 @@ be set, look at local-example.el for help here."
   (org-icalendar-use-scheduled '(event-if-not-todo event-if-todo))
   (org-icalendar-use-deadline '(event-if-not-todo event-if-todo)))
 
-;; TODO olivetti is cool!
-;; (use-package olivetti :ensure t
-;;   :custom (olivetti-style nil) (olivetti-body-width 80)
-;;   :hook ((org-mode markdown-mode) . olivetti-mode))
-
-(defun +upload-calendar ()
-  (interactive)
-  (let* ((auth (car (auth-source-search
-                     :host "cloudflare-r2"
-                     :require '(:user :secret))))
-         (process-environment
-          (append
-           (list
-            (concat "AWS_ACCESS_KEY_ID=" (plist-get auth :user))
-            (concat "AWS_SECRET_ACCESS_KEY="
-                    (funcall (plist-get auth :secret)))
-            "AWS_DEFAULT_REGION=auto")
-           process-environment))
-         (buf (get-buffer-create "*aws*")))
-    (with-current-buffer buf
-      (erase-buffer))
-    (let ((status
-           (call-process
-            "aws" nil buf t
-            "s3" "cp"
-            (expand-file-name "~/org.ics")
-            (format "s3://%s/%s" +r2-bucket +r2-object)
-            "--endpoint-url" +r2-endpoint
-            "--content-type" "text/calendar")))
-      (display-buffer buf)
-      (message "aws exited with %s" status)))) ;; for debug
-
 (advice-add 'org-refile :after 'org-save-all-org-buffers)
-
-;; N.B org-icalendar-combined-agenda-file defined
-(defun +export-calendar ()
-  (interactive)
-  (org-save-all-org-buffers)
-  (org-icalendar-combine-agenda-files)
-  (+upload-calendar))
 
 (defun +org-clock-toggle ()
   (interactive)
@@ -483,7 +365,8 @@ be set, look at local-example.el for help here."
    "/DONE"
    'file))
 
-;;; LLM
+;;;;; 5.x LLMs
+
 
 (require 'auth-source)
 (require 'json)
@@ -598,6 +481,63 @@ CRITICAL DIRECTIVES:
               "--min-p" "0.00"
               "--presence-penalty" "0.0"
               "--repeat-penalty" "1.0")))
+
+;;;; 6. Global Bindings
+
+(defmacro il (&rest body) `(lambda () (interactive) ,@body))
+(defmacro ff (&rest path) `(il (find-file (concat ,@path))))
+
+(dolist (b `(("M-s" save-buffer)
+             ("M-o" +other-window-or-split)
+             ("M-O" delete-other-windows)
+             ("M-H" ,help-map)
+             ("M-D" duplicate-dwim)
+             ("M-g v" vc-dir-root)
+             ("M-g l" vc-print-root-log)
+             ("M-RET" +toggle-frame-fullscreen)
+             ("M--" ,(il (set-frame-size nil 160 55)))
+             ("C-;" hippie-expand)
+             ("M-;" completion-at-point)
+             ("M-/" comment-line)
+             ("M-p" backward-paragraph)
+             ("M-n" forward-paragraph)
+             ("M-F" query-replace-regexp)
+             ("M-K" kill-whole-line)
+             ("C-h" delete-backward-char)
+             ("C-j" newline) ;; autoindents
+             ("M-j" ,(il (join-line -1)))
+             ("C-c i" ,(ff user-emacs-directory "init.el"))
+             ("C-c l" ,(ff user-emacs-directory "local.el"))
+             ("C-c n" ,(ff (getenv "HOME") "/.notes/index.org"))
+             ("C-c a" ,(il (org-agenda nil "a")))
+             ;; ("M-p" project-find-file)
+             ("M-P" ,(il (+select-folder "~/src")))
+             ("C-c c" org-capture)
+             ("C-c h" org-insert-heading) ;; org-toggle-heading is what I sometimes want too.
+             ("M-u" undo)
+             ("M-r" undo-redo)
+             ;; ("M-I" ,(il (+with-project-context (call-interactively 'occur))))
+             ("M-i" imenu) ;; bad binding but also a reminder for i(ndex)menu
+             ("M-I" ,(il (+with-project-context (call-interactively 'rgrep))))
+             ("C-c t" +ctags)
+             ("C-c m" recompile)
+             ("C-c M" ,(il (+with-project-context (call-interactively 'compile))))
+             ("C-c ." +test)
+             ("M-R" +repl)
+             ("M-Q" sql-connect)
+             ("C-w" +kill-region-or-backward-word)
+             ("C-z" +terminal)))
+  (global-set-key (kbd (car b)) (cadr b)))
+
+;; vc reference
+;; - g - refresh status
+;; - x - hide clean/ignored entries
+;; - m/u - mark/unmark files
+;; - i - register new files
+;; - v - start a commit
+;; - l/L - show history for the selected file
+;; - P - push current branch
+;; - + - pull current branch (set rebase.true in git config too
 
 ;;; Vendoring -- plan to remove
 (add-to-list 'load-path (expand-file-name "vendor" user-emacs-directory))

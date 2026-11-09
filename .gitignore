@@ -6,6 +6,7 @@ ielm-history.eld
 vendor/
 custom.el
 projects.eld
+places.eld
 multisession/
 transient/
 eshell/
