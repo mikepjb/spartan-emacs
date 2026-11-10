@@ -9,14 +9,17 @@
 ;; - imports (i.e specific fns like REPL and navi)
 
 ;; TODO roll your own olivetti
+;; TODO still need to be able to build projects
+;; TODO still need to be able to build docker images
+;; TODO still need to be able to orchestrate docker containers (podman/docker compose)
+;; TODO same for kubectl
+;; TODO perhaps.. not part of this but having a good solution for deploying to a VPS would also be nice
 
 ;;;; 1. Environment
 
 (setq read-process-output-max (* 4 1024 1024)
       load-prefer-newer t ;; init.el > init.elc if newer
       debug-on-error nil) ;; switch to t for help debugging emacs.
-
-(load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
 
 (require 'seq) ;; use for REPL + context helpers
 
@@ -43,10 +46,75 @@
       use-short-answers t
       split-width-threshold 160
       split-height-threshold nil
-      split-window-preferred-function #'+split-window-logic
       frame-resize-pixelwise t)
 
 (setq-default cursor-in-non-selected-windows nil)
+
+(defvar +left-window nil
+  "The main editing window created by M-P.")
+
+(defvar +top-right-window nil
+  "The top-right window created by M-P.")
+
+(defvar +bottom-right-window nil
+  "The bottom-right window created by M-P.")
+
+(add-to-list 'display-buffer-alist
+             '("\\`\\*vc-diff\\*\\'"
+               display-buffer-in-previous-window
+               (previous-window . +left-window)
+               (reusable-frames . nil)))
+
+;; Top right: commands, processes, and output.
+(add-to-list 'display-buffer-alist
+             '((or (derived-mode . (compilation-mode
+                                    comint-mode
+                                    sql-interactive-mode
+                                    eshell-mode
+                                    term-mode
+                                    comint-mode
+                                    proced-mode))
+                   (category . comint)
+                   "\\`\\*\\(?:format-this\\|top\\)\\*\\'")
+               display-buffer-in-previous-window
+               (previous-window . +top-right-window)
+               (reusable-frames . nil)))
+
+;; Bottom right: reference and navigation.
+(add-to-list 'display-buffer-alist
+             '((or (derived-mode . (help-mode
+                                    Info-mode
+                                    Man-mode
+                                    vc-dir-mode
+                                    log-view-mode
+                                    diff-mode
+                                    org-mode
+                                    org-agenda-mode
+                                    flymake-diagnostics-buffer-mode
+                                    flymake-project-diagnostics-mode))
+                   "\\`\\*\\(?:Help\\|xref\\|navi\\|Org Agenda\\)\\*\\'"
+                   "\\`\\*godoc ")
+               display-buffer-in-previous-window
+               (previous-window . +bottom-right-window)
+               (reusable-frames . nil)))
+
+(defun +three-pane-layout ()
+  "Split one window into a 55/45 layout with two stacked panes on the right."
+  (interactive)
+  (unless (one-window-p t)
+    (user-error "Start with one pane (C-x 1), then press M-P"))
+  (let* ((left (selected-window))
+         (left-width (round (* 0.55 (window-total-width left))))
+         (before (current-window-configuration)))
+    (condition-case err
+        (let* ((right (split-window left left-width 'right))
+               (bottom (split-window right nil 'below)))
+          (setq +left-window left
+                +top-right-window right
+                +bottom-right-window bottom))
+      (error
+       (set-window-configuration before)
+       (signal (car err) (cdr err))))))
 
 (defun +other-window-or-split ()
   "If one window, split, otherwise invoke 'other-window'"
@@ -103,7 +171,7 @@
 
 (setq outline-minor-mode-cycle t)
 
-(defun mx/elisp-outline-setup ()
+(defun +elisp-outline-setup ()
   ;; Use only comment headings, regardless of the major mode's
   ;; outline search implementation.
   (setq-local outline-search-function nil)
@@ -112,7 +180,7 @@
   (setq-local outline-default-state 4)
   (outline-minor-mode 1))
 
-(add-hook 'emacs-lisp-mode-hook #'mx/elisp-outline-setup)
+(add-hook 'emacs-lisp-mode-hook #'+elisp-outline-setup)
 
 (define-key outline-minor-mode-map (kbd "<backtab>")
             #'outline-cycle-buffer)
@@ -131,6 +199,8 @@
       custom-file (locate-user-emacs-file "custom.el"))
 
 (load custom-file 'noerror 'nomessage)
+
+(load (locate-user-emacs-file "local.el") 'noerror 'nomessage)
 
 ;;;; 5. Workflows
 ;;;;; 5.i Project
@@ -164,15 +234,24 @@
   (interactive)
   (comint-run "node"))
 
+(defun +repl-clojure ()
+  (interactive)
+  (inferior-lisp "clojure"))
+
+(defun +repl-python ()
+  (run-python nil nil t))
+
 (defvar +repl-config
   '(("emacs-lisp" ielm
      emacs-lisp-mode lisp-interaction-mode)
-    ("python" run-python
+    ("python" +repl-python
      python-mode python-ts-mode)
+    ("clojure" +repl-clojure
+     clojure-mode)
     ("sqlite" sql-sqlite
      sql-mode)
     ("node" +repl-node
-     typescript-mode js2-mode))
+     typescript-mode js-mode))
   "REPL entries as NAME, COMMAND, and matching major modes.")
 
 (defun +repl--matches-p (entry)
@@ -201,9 +280,9 @@
             (car entries))
            (t
             (+repl--choose entries)))))
-    (other-window-prefix)
     (+with-project-context
-     (funcall (cadr entry)))))
+      (let ((switch-to-buffer-obey-display-actions t))
+        (funcall (cadr entry))))))
 
 ;;;;; 5.iii Terminal
 
@@ -211,11 +290,77 @@
 
 ;;;;; 5.iv Compilation and testing
 
+(defun +test-this (&optional whole-project)
+  "Test the current file or package, or the whole project with a prefix."
+  (interactive "P")
+  (let ((file-extension (file-name-extension buffer-file-name))
+        (file-directory (file-name-directory buffer-file-name)))
+    (pcase file-extension
+      ("go"
+       (compile (if whole-project
+                    "go test -v ./..."
+                  (concat "go test " file-directory))))
+      )))
+
+(defvar +format-this--saving nil
+  "Non-nil while the manual formatter command saves the buffer.")
+
+(defun +format-this ()
+  "Save the current file and format it asynchronously."
+  (interactive)
+  (unless buffer-file-name
+    (user-error "This buffer is not visiting a file"))
+  (let* ((source (current-buffer))
+         (file buffer-file-name)
+         (args
+          (pcase (file-name-extension file)
+            ("go"    '("goimports" "-w"))
+            ("py"    '("black"))
+            ("zig"   '("zig" "fmt"))
+            ("templ" '("go" "tool" "templ" "fmt"))
+            ((or "js" "jsx" "ts" "tsx")
+             (if (locate-dominating-file
+                  default-directory
+                  (lambda (dir)
+                    (or (file-exists-p (expand-file-name "deno.json" dir))
+                        (file-exists-p (expand-file-name "deno.jsonc" dir)))))
+                 '("deno" "fmt")
+               '("npx" "prettier" "--write")))
+            (_ (user-error "No formatter configured for %s" file)))))
+    (unless (executable-find (car args))
+      (user-error "Cannot find %s on exec-path" (car args)))
+    (when (buffer-modified-p)
+      (let ((+format-this--saving t))
+        (save-buffer)))
+    (make-process
+     :name "format-this"
+     :buffer "*format-this*"
+     :command (append args (list file))
+     :connection-type 'pipe
+     :sentinel
+     (lambda (process _event)
+       (when (memq (process-status process) '(exit signal))
+         (if (zerop (process-exit-status process))
+             (when (buffer-live-p source)
+               (with-current-buffer source
+                 (revert-buffer t t t)))
+           (display-buffer (process-buffer process))))))))
+
+(defun +format-this-on-save ()
+  "Format supported files after saving."
+  (when (and (not +format-this--saving)
+             buffer-file-name
+             (member (file-name-extension buffer-file-name)
+                     '("go" "py" "zig" "templ" "js" "jsx" "ts" "tsx")))
+    (+format-this)))
+
+(add-hook 'after-save-hook #'+format-this-on-save)
+
 ;;;;; 5.v File management
 
 (setq dired-listing-switches "-lah") ;; human readable file sizes
 
-(defun mx/speedbar-toggle ()
+(defun +speedbar-toggle ()
   (interactive)
   (speedbar-window)
   (when-let* ((buf (bound-and-true-p speedbar-buffer))
@@ -233,6 +378,10 @@
 ;; (setq vc-dir-auto-hide-up-to-date 'revert
 ;;       vc-dir-save-some-buffers-on-revert t)
 ;; (setq vc-git-log-switches '("--name-status")) ;; show affected files in git log view
+
+(with-eval-after-load 'diff-mode
+  (keymap-set diff-mode-map "ESC" (copy-keymap diff-mode-shared-map))
+  (keymap-unset diff-mode-map "M-o"))
 
 (defun +vc-pr ()
   (interactive)
@@ -300,7 +449,7 @@ be set, look at local-example.el for help here."
                  (not (member tags-file tags-table-list)))
         (visit-tags-table tags-file t)))))
 
-(add-hook 'find-file-hook #'+ctags-link)
+;; (add-hook 'find-file-hook #'+ctags-link) ;; manually invoke for now
 
 ;;;;; 5.viii Documentation
 
@@ -500,6 +649,7 @@ CRITICAL DIRECTIVES:
              ("M-;" completion-at-point)
              ("M-/" comment-line)
              ("M-p" backward-paragraph)
+             ("M-P" +three-pane-layout)
              ("M-n" forward-paragraph)
              ("M-F" query-replace-regexp)
              ("M-K" kill-whole-line)
@@ -510,23 +660,27 @@ CRITICAL DIRECTIVES:
              ("C-c l" ,(ff user-emacs-directory "local.el"))
              ("C-c n" ,(ff (getenv "HOME") "/.notes/index.org"))
              ("C-c a" ,(il (org-agenda nil "a")))
-             ;; ("M-p" project-find-file)
-             ("M-P" ,(il (+select-folder "~/src")))
+             ("M-i" project-find-file)
+             ("M-I" ,(il (+select-folder "~/src")))
              ("C-c c" org-capture)
              ("C-c h" org-insert-heading) ;; org-toggle-heading is what I sometimes want too.
              ("M-u" undo)
              ("M-r" undo-redo)
-             ;; ("M-I" ,(il (+with-project-context (call-interactively 'occur))))
-             ("M-i" imenu) ;; bad binding but also a reminder for i(ndex)menu
-             ("M-I" ,(il (+with-project-context (call-interactively 'rgrep))))
+             ("M-e" imenu) ;; bad binding but also a reminder for i(ndex)menu
+             ("M-E" ,(il (+with-project-context (call-interactively 'rgrep))))
              ("C-c t" +ctags)
+             ;; test-this
+             ;; lint-this? or include as part of test-this?
+             ;; build-this
+             ("C-c C-c" +test-this)
+             ;; ("C-c C-" +test-this)
              ("C-c m" recompile)
              ("C-c M" ,(il (+with-project-context (call-interactively 'compile))))
              ("C-c ." +test)
              ("M-R" +repl)
              ("M-Q" sql-connect)
              ("C-w" +kill-region-or-backward-word)
-             ("C-z" +terminal)))
+             ("C-z" eshell)))
   (global-set-key (kbd (car b)) (cadr b)))
 
 ;; vc reference
@@ -543,9 +697,6 @@ CRITICAL DIRECTIVES:
 (add-to-list 'load-path (expand-file-name "vendor" user-emacs-directory))
 
 (autoload 'go-mode "go-mode" nil t)
-(autoload 'clojure-mode "clojure-mode" nil t)
-(autoload 'clojurescript-mode "clojure-mode" nil t)
-(autoload 'clojurec-mode "clojure-mode" nil t)
 (autoload 'zig-mode "zig-mode" nil t)
 (autoload 'markdown-mode "markdown-mode" nil t)
 (autoload 'hcl-mode "hcl-mode" nil t)
@@ -554,10 +705,6 @@ CRITICAL DIRECTIVES:
 
 (dolist (entry
          '(("\\.go\\'"                 . go-mode)
-           ("\\.clj\\'"                . clojure-mode)
-           ("\\.cljs\\'"               . clojurescript-mode)
-           ("\\.cljc\\'"               . clojurec-mode)
-           ("\\.edn\\'"                . clojure-mode)
            ("\\.zig\\'"                . zig-mode)
            ("\\.\\(?:md\\|markdown\\)\\'" . markdown-mode)
            ("\\.hcl\\'"                . hcl-mode)
@@ -566,3 +713,18 @@ CRITICAL DIRECTIVES:
            ("\\.[cm]?ts\\'"            . typescript-mode)
            ("\\.[cm]?js\\'"            . js-mode)))
   (add-to-list 'auto-mode-alist entry))
+
+(defun +lisp-load-current-file ()
+  (interactive)
+  (lisp-load-file (buffer-file-name)))
+
+(use-package clojure-mode :ensure nil
+  :bind (:map clojure-mode-map
+              ("C-x C-e" . lisp-eval-last-sexp)
+              ("C-M-x"   . lisp-eval-defun)
+              ("C-c C-r" . lisp-eval-region)
+              ("C-c C-k" . +lisp-load-current-file)
+              ("C-c C-l" . lisp-load-file))
+  :hook (clojure-mode . (lambda ()
+                          (setq-local inferior-lisp-load-command
+                                      "(load-file \"%s\")\n"))))

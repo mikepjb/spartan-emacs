@@ -1,5 +1,33 @@
 * 🔱 Spartan Emacs
 ~A simple Emacs configuration.~
+
+Spartan Emacs is my own environment for computer tasks, mainly focused
+on software development. The aim of this setup is primarily to provide
+a simple interface for using computers. Simplicity is not easy and so
+we have some rules to help maintain the project and remain focused on
+this primary goal:
+
+- (Aim for) Zero dependencies: vanilla Emacs is preferred, where other
+  features help us we prefer to vendor (the case for major modes that
+  aren't provided) or copy/write just the parts we need.
+
+- Keep configuration small, aim for 300 lines. The main ~init.el~ to
+  configure Emacs should be under 300 lines and any separate files
+  should also be under 300 lines. These additions should only be
+  included separately where they are distinct from the actual
+  configuration of Emacs i.e ~navi~ is my own integration for working
+  with LLMs so it makes sense to separate this but having a separate
+  file for elisp functions does not fit.
+
+- Separate independent tools. An addition such as navi may live in its
+  own file because it provides a distinct capability. Each such tool
+  should also stay under 300 lines and justify its maintenance cost.
+  A miscellaneous collection of configuration helpers does not qualify.
+
+- Add features for recurring needs. Prefer a few well-used capabilities
+  over speculative integrations. Remove features that no longer earn
+  their place.
+
 ** Shell Comparison
 I also have a similar project focused around the shell + vim.
 
@@ -12,6 +40,59 @@ Both aim for a zero dependencies, reliable environment to operate in in differen
 
 - Emacs by default, comes with org-mode for example.
 
+*** Distinctions
+- While tmux + bash, or even neovim/vim with terminal buffers can
+  display multiple programs as the same time, they still do not
+  compose well into the same interface i.e taskwarrior in a vim/neovim
+  terminal. Emacs has a focus on the buffer being a first class
+  interface for programs to work together. It is for this reason that
+  you do not ideally want to even use eshell/ansi-term in Emacs to get
+  the full benefit of using Emacs i.e having a buffer/view for
+  interacting with docker inside Emacs rather than using docker
+  compose cli inside ansi-term. eshell/ansi-term are useful fallback
+  mechanisms.
+
+** Working principles
+This section serves to preserve some of the thinking that has gone
+into this setup.
+
+Actually a lot of what I've discovered here is that, tools matter less
+(but they do still matter!) and that the workflow or method of working
+is arguably what you should not lose focus on when doing development
+work.
+
+These principles are my synthesis of workflows explored through Ken
+Thompson (sam), Rich Hickey, Stuart Halloway, and Jonathan Blow (Emacs),
+Andrew Kelley and Gary Bernhardt (Vim), Carson Gross (IntelliJ/JetBrains),
+Ginger Bill (Sublime Text), and the TigerBeetle team. They are not
+quotations or rules attributed to those individuals.
+
+- *Clarify the problem.* Record constraints, alternatives, and the
+  reasons behind important decisions.
+
+- *Optimize recurring sequences.* Make finding, editing, evaluating,
+  testing, and inspecting results easy. Improve the whole feedback loop.
+
+- *Replace guesses with evidence.* Use small experiments, logs,
+  debuggers, and profilers to understand actual behavior.
+
+- *Preserve discoveries.* Keep useful queries, REPL expressions, and
+  investigation notes in searchable files.
+
+- *Reduce the burden of understanding.* Improve code structure and
+  inspection tools together. Prefer things I can explain and change.
+
+- *Revise the plan.* Let experiments challenge the original approach.
+  Working code can still be the wrong solution.
+
+- *Configure for recurring needs.* Count setup, maintenance, and
+  attention against the work a feature saves.
+
+- *Build fluency.* Practice useful operations until they become familiar.
+  Distinguish enjoying configuration from benefiting from it.
+
+Judge this environment by how well it helps me think, investigate,
+and finish work.
 ** Note on vendoring
 
 Script is used to vendor packages but they are not yet saved in source control,

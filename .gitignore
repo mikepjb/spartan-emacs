@@ -11,3 +11,4 @@ multisession/
 transient/
 eshell/
 history
+local.el
