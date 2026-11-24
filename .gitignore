@@ -12,3 +12,7 @@ transient/
 eshell/
 history
 local.el
+tramp
+url/
+notes/
+og-init.el

@@ -173,6 +173,10 @@
       (org-meta-line :inherit fixed-pitch)
       (org-drawer :inherit fixed-pitch)
 
+      (table-cell :inherit fixed-pitch)
+      (org-table :inherit fixed-pitch)
+      (secondary-selection :inherit fixed-pitch)
+
       (markdown-markup-face :background ,bg+++)
 
       (eshell-prompt :foreground ,yellow)
