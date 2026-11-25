@@ -3,6 +3,40 @@
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs '((java-mode java-ts-mode) . ("jdtlsw"))))
 
+(defvar +format-commands
+  '((go-mode        "goimports" "-w")
+    (zig-mode       "zig"       "fmt")
+    (terraform-mode "terraform" "fmt")
+    (yaml-mode      "prettier"  "--write")
+    (js-json-mode   "prettier"  "--write")
+    (clojure-mode   "cljfmt"    "fix")))
+
+(defun +format-sentinel (process event)
+  (when (and (memq (process-status process) '(exit signal))
+             (not (zerop (process-exit-status process))))
+    (message "%s: %s (see *format-log*)"
+             (car (process-command process))
+             (string-trim-right event))))
+
+(defun +format ()
+  (interactive)
+  (when (and buffer-file-name (not (file-remote-p buffer-file-name)))
+    (when-let ((command (cdr (assq major-mode +format-commands))))
+      (auto-revert-mode 1)
+      (condition-case err
+          (make-process
+           :name "format"
+           :buffer "*format-log*"
+           :command (append command (list buffer-file-name))
+           :connection-type 'pipe
+           :noquery t
+           :sentinel #'+format-sentinel)
+        (file-error
+         (message "Could not start %s: %s"
+                  (car command) (error-message-string err)))))))
+
+(add-hook 'after-save-hook #'+format)
+
 (defun +check ()
   (interactive)
   (message "I would run either the whole test suite or a single file"))

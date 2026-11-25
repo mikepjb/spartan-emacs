@@ -135,19 +135,13 @@
       (line-number :foreground ,fg+++)
       (line-number-current-line :foreground ,fg++ :background ,bg+++)
 
-      (markdown-header-face-1 :height 1.6 :weight bold :foreground ,fg
-                              :box (:line-width (-1 . 32) :color ,bg))
-      (markdown-header-face-2 :height 1.3 :slant italic :foreground ,fg
-                              :box (:line-width (-1 . 20) :color ,bg))
-      (markdown-header-face-3 :height 1.0 :weight bold :foreground ,fg
-                              :box (:line-width (-1 . 12) :color ,bg))
+      (markdown-header-face-1 :height 1.0 :weight bold :foreground ,fg)
+      (markdown-header-face-2 :height 1.0 :slant italic :foreground ,fg)
+      (markdown-header-face-3 :height 1.0 :weight bold :foreground ,fg)
       (markdown-header-face-4 :height 1.0 :weight bold :foreground ,fg)
-      (org-level-1 :height 1.6 :weight bold :foreground ,fg
-                   :box (:line-width (-1 . 32) :color ,bg))
-      (org-level-2 :height 1.3 :slant italic :foreground ,fg
-                   :box (:line-width (-1 . 20) :color ,bg))
-      (org-level-3 :height 1.0 :foreground ,fg
-                   :box (:line-width (-1 . 12) :color ,bg))
+      (org-level-1 :height 1.0 :weight bold :foreground ,fg)
+      (org-level-2 :height 1.0 :slant italic :foreground ,fg)
+      (org-level-3 :height 1.0 :foreground ,fg)
       (org-level-4 :height 1.0 :foreground ,fg)
       (org-level-5 :height 1.0 :foreground ,fg)
       (org-level-6 :height 1.0 :foreground ,fg)

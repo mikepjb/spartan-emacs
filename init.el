@@ -104,6 +104,7 @@
               ("C-w" +kill-region-or-backward-word)
               ("M-RET" toggle-frame-maximized)
               ("M-t" +check)
+              ("M-Q" quarter-master)
               ("M-K" kill-whole-line)
               ("M-/" comment-line)
               ("C-," switch-to-prev-buffer) ;; really we want vim C-i/C-o
@@ -121,8 +122,9 @@
 (add-to-list 'load-path (locate-user-emacs-file "extra/"))
 (require 'extra-development)
 (require 'extra-org)
+(require 'extra-language)
 
-;; only if commit save buffer wanted.. not sure yet
-;; (require 'server)
-;; (unless (server-running-p)
-;;   (server-start))
+;; TODO
+;; - transparency with video is great tbh. or.. transparency/background kinda thing?
+;; - compilation jump tos
+;; - still need to implement run/check/repl/build/format
