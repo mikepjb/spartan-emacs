@@ -29,11 +29,16 @@
     (t :background "#e9dfee" :foreground "#3d2849"))
   "Alternate booking fill." :group 'quarter-master)
 
-(defcustom quarter-master-color-rules nil
+(defcustom quarter-master-color-rules
+  '((tag "work" (:inherit (font-lock-function-name-face region)))
+    (tag "family" (:inherit (font-lock-variable-name-face region)))
+    (tag "self" (:inherit (font-lock-string-face region)))
+    (tag "travel" (:inherit (shadow region))))
   "Ordered rules for colouring bookings.  The first match wins.
 Each rule is (KIND VALUE FACE), where KIND is `state' or `tag',
 VALUE is an exact Org keyword or tag, and FACE is an Emacs face or
 a face attribute list.  Tags follow Org's tag inheritance settings.
+Defaults combine category foregrounds with the theme's `region' fill.
 With rules configured, unmatched bookings use `quarter-master-block'.
 With no rules, bookings use the two alternating fills."
   :type '(repeat (list (choice (const state) (const tag))
@@ -46,7 +51,7 @@ With no rules, bookings use the two alternating fills."
   :type 'string
   :group 'quarter-master)
 
-(defcustom quarter-master-tag-cycle '("work" "family" "travel")
+(defcustom quarter-master-tag-cycle '("work" "family" "self" "travel")
   "Tags to cycle through with t on a Quarter Master booking."
   :type '(repeat string)
   :group 'quarter-master)
@@ -322,7 +327,7 @@ such as \"work\". Later rules take precedence where ranges overlap."
                      (quarter-master-cycle-tag "t")
                      (org-agenda-later "M-n")
                      (org-agenda-earlier "M-p")
-                     (quarter-master-next "TAB" "<tab>" "<right>" "M-f" "f")
+                     (quarter-master-next "TAB" "<tab>" "<right>" "M-f" "f" "w")
                      (quarter-master-previous "<backtab>" "S-<tab>" "<left>" "M-b" "b")
                      (quarter-master-down "<down>" "C-n")
                      (quarter-master-up "<up>" "C-p")

@@ -27,16 +27,4 @@
         ("19:30" "20:30" "Work time")
         ))
 
-(setq quarter-master-tag-cycle
-      '("work" "family" "travel"))
-
-(setq quarter-master-color-rules
-      '((tag   "work"    (:background "#c6e3f5" :foreground "#17394a"))
-        (tag   "family"  (:background "#f4cddd" :foreground "#492436"))
-        (tag   "travel"  (:background "#cbe7d3" :foreground "#193c29"))
-        (tag   "lvh"     (:background "#f7d9b5" :foreground "#493018"))
-        (tag   "hypalynx" (:background "#ddcdef" :foreground "#39264c"))
-        (state "CURRENT" (:background "#ffe293" :foreground "#342600"))
-        (state "DONE"    (:background "#d4d8dc" :foreground "#343a40"))))
-
 (provide 'extra-org)
