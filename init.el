@@ -5,12 +5,13 @@
 ;; - compilation jump tos
 ;; - still need to implement run/check/repl/build/format
 ;; - mac os maximise?!?
-;; -
+;; - vc git push with passphrase.. authinfo.gpg?
 
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
 (fringe-mode 0)
+(electric-pair-mode 1)
 (fido-vertical-mode 1)
 (blink-cursor-mode 0)
 (savehist-mode 1)
@@ -20,8 +21,10 @@
  "+java"
  '("stroustrup" (c-offsets-alist . ((arglist-cont-nonempty . 0)
                                     (statement-block-intro . +)))))
+
 (setq
  inhibit-startup-screen t
+ ns-use-native-fullscreen nil
  use-short-answers t
  ring-bell-function 'ignore
  c-default-style '((java-mode . "+java") (other . "gnu"))
@@ -30,7 +33,9 @@
  isearch-wrap-pause 'no
  create-lockfiles nil
  make-backup-files nil
- auto-save-default nil)
+ auto-save-default nil
+ project-vc-extra-root-markers
+ '("package.json" "go.mod" "zig.build" "deps.edn" "gradle.build" "pom.xml"))
 
 (setq-default
  display-fill-column-indicator-column 80
@@ -81,8 +86,11 @@
 
 (load-theme 'flow t)
 
-(add-hook 'window-size-change-functions
-          #'frame-hide-title-bar-when-maximized)
+;; Mac OS seems to have a bug here that messes up maximise when hiding
+;; the title bar.
+(when (not (eq window-system 'ns))
+  (add-hook 'window-size-change-functions
+            #'frame-hide-title-bar-when-maximized))
 
 (setq custom-file (locate-user-emacs-file "custom.el"))
 (load custom-file 'noerror 'nomessage)
@@ -90,6 +98,13 @@
 
 (defmacro il (&rest body) `(lambda () (interactive) ,@body))
 (defmacro ff (&rest path) `(il (find-file (concat ,@path))))
+
+(defmacro +with-project (&rest body)
+  `(let* ((project (project-current nil))
+          (default-directory
+           (if project (project-root project)
+             default-directory)))
+     ,@body))
 
 (defun +select-folder (path)
   "Find file for a given PATH."
@@ -103,8 +118,7 @@
   (cond ((region-active-p) (call-interactively #'kill-region))
         (t (backward-kill-word 1))))
 
-(dolist (b `(
-             ("M-s" save-buffer)
+(dolist (b `(("M-s" save-buffer)
              ("M-o" ,(il (when (= (length (window-list)) 1)
                            (split-window-right))
                          (other-window 1)))
@@ -117,28 +131,24 @@
              ("M-p" backward-paragraph)
              ("M-g v" vc-dir-root)
              ("M-H" ,help-map)
-             ("M-G" ,(il (let* ((project (project-current nil))
-                                (default-directory
-                                 (if project (project-root project)
-                                   default-directory)))
-                                 (call-interactively 'rgrep))))
-              ("M-j" ,(il (join-line -1)))
-              ("C-h" delete-backward-char)
-              ("C-j" newline) ;; autoindents
-              ("C-z" ,(il (ansi-term "bash")))
-              ("M-g a" +pi)
-              ("C-w" +kill-region-or-backward-word)
-              ("M-RET" toggle-frame-maximized)
-              ("M-t" +check)
-              ("M-g q" quarter-master)
-              ("M-K" kill-whole-line)
-              ("M-/" comment-line)
-              ("C-," switch-to-prev-buffer) ;; really we want vim C-i/C-o
-              ("C-." switch-to-next-buffer)
-              ("C-c i" ,(ff user-emacs-directory "init.el"))
-              ("C-c l" ,(ff user-emacs-directory "local.el"))
-              ("C-c n" ,(ff (getenv "HOME") "/.notes/planner.org"))))
-           (global-set-key (kbd (car b)) (cadr b)))
+             ("M-G" ,(il (+with-project (call-interactively 'rgrep))))
+             ("M-j" ,(il (join-line -1)))
+             ("C-h" delete-backward-char)
+             ("C-j" newline) ;; autoindents
+             ("C-z" ,(il (ansi-term "bash")))
+             ("M-g a" +pi)
+             ("C-w" +kill-region-or-backward-word)
+             ("M-RET" toggle-frame-maximized)
+             ("M-t" +check)
+             ("M-g q" quarter-master)
+             ("M-K" kill-whole-line)
+             ("M-/" comment-line)
+             ("C-," switch-to-prev-buffer) ;; really we want vim C-i/C-o
+             ("C-." switch-to-next-buffer)
+             ("C-c i" ,(ff user-emacs-directory "init.el"))
+             ("C-c l" ,(ff user-emacs-directory "local.el"))
+             ("C-c n" ,(ff (getenv "HOME") "/.notes/planner.org"))))
+  (global-set-key (kbd (car b)) (cadr b)))
 
 (with-eval-after-load 'term
   (define-key term-raw-map (kbd "M-o") #'other-window)

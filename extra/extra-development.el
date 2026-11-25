@@ -37,13 +37,31 @@
 
 (add-hook 'after-save-hook #'+format)
 
-(defun +check ()
-  (interactive)
-  (message "I would run either the whole test suite or a single file"))
+(defun +check (arg)
+  (interactive "P")
+  (+with-project
+   (let ((command (cl-loop for (file . command)
+                           in '(("package.json" . "npm run test")
+                                ("zig.build" . "zig build test")
+                                ("go.mod" . "go test ./..."))
+                           when (file-exists-p
+                                 (expand-file-name file default-directory))
+                           return command)))
+     (unless command
+       (user-error "No known test for this project")))))
 
 (defun +build ()
   (interactive)
-  (message "I would build the project"))
+  (+with-project
+   (let ((command (cl-loop for (file . command)
+                           in '(("package.json" . "npm run build")
+                                ("zig.build" . "zig build")
+                                ("go.mod" . "go build ./..."))
+                           when (file-exists-p
+                                 (expand-file-name file default-directory))
+                           return command)))
+     (unless command
+       (user-error "No known command for this project")))))
 
 (defun +run ()
   (interactive)
@@ -60,6 +78,21 @@
 (defun +audit ()
   (interactive)
   (message "I would run an audit (may be it's own mode/file)"))
+
+(defun +pi ()
+  (interactive)
+  (let* ((project (or (project-current)
+                      (user-error "Not in a project")))
+         (default-directory (project-root project))
+         (dir (file-name-nondirectory
+               (directory-file-name default-directory)))
+         (base (format "agent-%s" dir))
+         (name base)
+         (n 1))
+    (while (get-buffer (format "*%s*" name))
+      (setq name (format "%s-%d" base n)
+            n (1+ n)))
+    (ansi-term "pi --preset codex" name)))
 
 (defun +cloud-sql-proxy-start ()
   "Start a Cloud SQL Proxy instance. Requires +cloud-sql-instances var to
