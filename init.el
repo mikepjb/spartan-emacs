@@ -1,5 +1,12 @@
 ;;; init.el -*- lexical-binding: t; -*-
 
+;; TODO
+;; - transparency with video is great tbh. or.. transparency/background kinda thing?
+;; - compilation jump tos
+;; - still need to implement run/check/repl/build/format
+;; - mac os maximise?!?
+;; -
+
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
@@ -33,6 +40,25 @@
  tab-width 2
  standard-indent 2
  whitespace-style '(face trailing tabs empty indentation::space))
+
+(defconst +path
+  '("$HOME/src/llama.cpp/build/bin" ; llama.cpp built from source
+    "$HOME/.local/bin" ; User bin dir
+    "/opt/homebrew/bin" ; Mac OS Homebrew package manager
+    "/usr/local/go/bin"
+    "$HOME/go/bin"
+    "$HOME/.deno/bin"
+    "$HOME/.npm/bin"
+    "/bin"
+    "/sbin" ; Mac OS puts some binaries in here like `lsof`
+    "/usr/local/bin"
+    "/usr/bin"
+    "/usr/local/sbin"
+    "$HOME/.cargo/bin"))
+
+(let ((paths (mapcar #'substitute-in-file-name +path)))
+  (setenv "PATH" (string-join paths ":"))
+  (setq exec-path paths))
 
 (when (executable-find "rg")
   (setq xref-search-program 'ripgrep)
@@ -100,11 +126,11 @@
               ("C-h" delete-backward-char)
               ("C-j" newline) ;; autoindents
               ("C-z" ,(il (ansi-term "bash")))
-              ("C-c C" ,(il (ansi-term "pi --preset codex")))
+              ("M-g a" +pi)
               ("C-w" +kill-region-or-backward-word)
               ("M-RET" toggle-frame-maximized)
               ("M-t" +check)
-              ("M-Q" quarter-master)
+              ("M-g q" quarter-master)
               ("M-K" kill-whole-line)
               ("M-/" comment-line)
               ("C-," switch-to-prev-buffer) ;; really we want vim C-i/C-o
@@ -123,8 +149,3 @@
 (require 'extra-development)
 (require 'extra-org)
 (require 'extra-language)
-
-;; TODO
-;; - transparency with video is great tbh. or.. transparency/background kinda thing?
-;; - compilation jump tos
-;; - still need to implement run/check/repl/build/format

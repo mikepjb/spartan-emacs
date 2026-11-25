@@ -24,10 +24,17 @@
   '((((background dark)) :background "#32566a" :foreground "#ffffff")
     (t :background "#d4e7ed" :foreground "#17394a"))
   "Booking fill." :group 'quarter-master)
+
 (defface quarter-master-alternate
   '((((background dark)) :background "#584765" :foreground "#ffffff")
     (t :background "#e9dfee" :foreground "#3d2849"))
   "Alternate booking fill." :group 'quarter-master)
+
+(defface quarter-master-now
+  '((((background dark)) :box (:line-width -1 :color "#cba6f7"))
+    (t :box (:line-width -1 :color "#8839ef")))
+  "Outline of the current quarter, updated when the agenda refreshes."
+  :group 'quarter-master)
 
 (defcustom quarter-master-color-rules
   '((tag "work" (:inherit (font-lock-function-name-face region)))
@@ -210,7 +217,7 @@ such as \"work\". Later rules take precedence where ranges overlap."
               (save-buffer)))))
       (setq quarter-master--preferred-file file)
       (org-agenda-redo)
-      (when-let ((pos (aref quarter-master--stops quarter)))
+      (when-let* ((pos (aref quarter-master--stops quarter)))
         (goto-char pos))
       (message "Booked %s on %s, %s" title date range))))
 
@@ -368,6 +375,11 @@ such as \"work\". Later rules take precedence where ranges overlap."
 (defun quarter-master--render ()
   (let* ((events (quarter-master--events))
          (labels (quarter-master--labels))
+         (now (current-time))
+         (current-quarter
+          (when (= org-starting-day (time-to-days now))
+            (let ((local (decode-time now)))
+              (+ (* 4 (nth 2 local)) (/ (nth 1 local) 15)))))
          (start (car quarter-master-hours))
          (end (cadr quarter-master-hours))
          (window (get-buffer-window (current-buffer) t))
@@ -405,6 +417,8 @@ such as \"work\". Later rules take precedence where ranges overlap."
                             (let ((beg (point)))
                               (move-to-column (+ 5 (* width (1+ i))))
                               (put-text-property beg (point) 'quarter-master-slot q)
+                              (when (eq q current-quarter)
+                                (add-face-text-property beg (point) 'quarter-master-now))
                               (when (or (null (aref quarter-master--stops q))
                                         (and (aref row i)
                                              (null (get-text-property
