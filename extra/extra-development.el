@@ -37,31 +37,33 @@
 
 (add-hook 'after-save-hook #'+format)
 
-(defun +check (arg)
-  (interactive "P")
+(defun +check ()
+  (interactive)
   (+with-project
    (let ((command (cl-loop for (file . command)
                            in '(("package.json" . "npm run test")
-                                ("zig.build" . "zig build test")
+                                ("build.zig" . "zig build test")
                                 ("go.mod" . "go test ./..."))
                            when (file-exists-p
                                  (expand-file-name file default-directory))
                            return command)))
      (unless command
-       (user-error "No known test for this project")))))
+       (user-error "No known test for this project"))
+     (compile command))))
 
 (defun +build ()
   (interactive)
   (+with-project
    (let ((command (cl-loop for (file . command)
                            in '(("package.json" . "npm run build")
-                                ("zig.build" . "zig build")
+                                ("build.zig" . "zig build")
                                 ("go.mod" . "go build ./..."))
                            when (file-exists-p
                                  (expand-file-name file default-directory))
                            return command)))
      (unless command
-       (user-error "No known command for this project")))))
+       (user-error "No known command for this project"))
+     (compile command))))
 
 (defun +run ()
   (interactive)
