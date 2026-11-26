@@ -38,6 +38,7 @@
 
 (defcustom quarter-master-color-rules
   '((tag "work" (:inherit (font-lock-function-name-face region)))
+    (tag "meeting" (:inherit (compilation-warning region)))
     (tag "family" (:inherit (font-lock-variable-name-face region)))
     (tag "self" (:inherit (font-lock-string-face region)))
     (tag "travel" (:inherit (shadow region))))
@@ -58,7 +59,7 @@ With no rules, bookings use the two alternating fills."
   :type 'string
   :group 'quarter-master)
 
-(defcustom quarter-master-tag-cycle '("work" "family" "self" "travel")
+(defcustom quarter-master-tag-cycle '("work" "meeting" "family" "self" "travel")
   "Tags to cycle through with t on a Quarter Master booking."
   :type '(repeat string)
   :group 'quarter-master)
